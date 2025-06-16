@@ -1,0 +1,11 @@
+{
+    "version": 2,
+    "functions": {
+        "api/webhook.ts": {
+            "maxDuration": 10
+        }
+    },
+    "env": {
+        "BOT_TOKEN": "@bot_token"
+    }
+}

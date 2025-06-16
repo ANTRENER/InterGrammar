@@ -8,6 +8,11 @@ import { ConfigModule } from '@nestjs/config';
         ConfigModule.forRoot(),
         TelegrafModule.forRoot({
             token: process.env.BOT_TOKEN,
+            options: {
+                telegram: {
+                    webhookReply: false,
+                },
+            },
         }),
     ],
     providers: [BotUpdate],
