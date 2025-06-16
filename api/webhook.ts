@@ -1,16 +1,15 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from '../src/app.module';
+import { Telegraf } from 'telegraf';
+import { BotUpdate } from '../src/bot/bot.update';
 
-let app: any;
+const bot = new Telegraf(process.env.BOT_TOKEN!);
+const botUpdate = new BotUpdate();
 
-async function bootstrap() {
-    if (!app) {
-        app = await NestFactory.create(AppModule);
-        await app.init();
-    }
-    return app;
-}
+// Регистрируем обработчики
+bot.start(botUpdate.startCommand.bind(botUpdate));
+bot.action('start_test', botUpdate.startTest.bind(botUpdate));
+bot.action(/^answer_(\d+)$/, botUpdate.handleAnswer.bind(botUpdate));
+bot.action(['telegram_link', 'interview_link'], botUpdate.handleLink.bind(botUpdate));
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method !== 'POST') {
@@ -18,16 +17,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     try {
-        const app = await bootstrap();
         const update = req.body;
-
-        // Получаем экземпляр бота
-        const telegrafService = app.get('TelegrafService');
-
-        if (telegrafService && telegrafService.bot) {
-            await telegrafService.bot.handleUpdate(update);
-        }
-
+        await bot.handleUpdate(update);
         res.status(200).json({ ok: true });
     } catch (error) {
         console.error('Webhook error:', error);

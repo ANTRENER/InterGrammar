@@ -1,4 +1,3 @@
-import { Update, Ctx, Start, Action } from 'nestjs-telegraf';
 import { Context } from 'telegraf';
 import { Markup } from 'telegraf';
 
@@ -292,24 +291,21 @@ const questions: Question[] = [
     }
 ];
 
-@Update()
 export class BotUpdate {
     private userStates: Map<number, { currentQuestion: number; score: number }> = new Map();
 
-    @Start()
-    async startCommand(@Ctx() ctx: Context) {
+    async startCommand(ctx: Context) {
         await ctx.reply(
             'Проверь себя на 20 грамматических ошибок, типичных для уровней A2, B1 и B2!\n\n' +
             'Что умеет этот бот?\n' +
-            'Нажмите кнопку начать, чтобы пройти диагностику своей грамматики и получить рекомендации по ее улучшению!',
+            'Нажми кнопку начать, чтобы пройти диагностику своей грамматики и получить рекомендации по ее улучшению!',
             Markup.inlineKeyboard([
                 Markup.button.callback('Начать тест', 'start_test')
             ])
         );
     }
 
-    @Action('start_test')
-    async startTest(@Ctx() ctx: Context) {
+    async startTest(ctx: Context) {
         const userId = ctx.from.id;
         this.userStates.set(userId, { currentQuestion: 0, score: 0 });
         await this.sendQuestion(ctx, 0);
@@ -327,8 +323,7 @@ export class BotUpdate {
         );
     }
 
-    @Action(/^answer_(\d+)$/)
-    async handleAnswer(@Ctx() ctx: Context) {
+    async handleAnswer(ctx: Context) {
         const userId = ctx.from.id;
         const userState = this.userStates.get(userId);
         if (!userState) return;
@@ -336,7 +331,7 @@ export class BotUpdate {
         const selectedAnswer = parseInt((ctx as any).match[1]);
         const currentQuestion = questions[userState.currentQuestion];
 
-        // Send explanation
+        // Показываем explanation для выбранного варианта
         await ctx.reply(currentQuestion.explanations[selectedAnswer]);
 
         // Update score if correct
@@ -364,11 +359,11 @@ export class BotUpdate {
 
         if (score <= 10) {
             message += 'Ой, к сожалению, это распространенная ситуация даже на средних уровнях, скорее всего эти непонятки тянутся еще со школы😢. Но не волнуйся! Чтобы навсегда искоренить эти ошибки и сделать твою речь ПРАВИЛЬНОЙ и БЕГЛОЙ, я создала курс "Живая грамматика". Курс основан не на правилах и табличках, а на видео с носителями, так что аудирование тоже прокачаем!';
-            buttonText = 'Записаться на собеседование';
+            buttonText = 'Перейти в Telegram';
             buttonCallback = 'telegram_link';
         } else if (score <= 15) {
             message += 'Неплохо! 👏 Ты уже хорошо разбираешься в грамматике, но ошибки все еще проскакивают - это может повлиять на коммуникацию и твой образ как профессионала. Чтобы ты мог довести свои знания до совершенства и говорить ещё увереннее, я создала курс "Живая грамматика". Курс основан не на правилах и табличках, а на видео с носителями, так что аудирование тоже прокачаем!';
-            buttonText = 'Записаться на собеседование';
+            buttonText = 'Перейти в Telegram';
             buttonCallback = 'telegram_link';
         } else {
             message += 'Вау, замечательный результат! 🎉У тебя нет проблем с грамматикой уровня Intermediate, а если ты хочешь двигаться дальше - приходи на уроки в мини-группы высокого уровня! Там тебя ждет много сочной продвинутой лексики и много-много общения!';
@@ -384,8 +379,7 @@ export class BotUpdate {
         );
     }
 
-    @Action(['telegram_link', 'interview_link'])
-    async handleLink(@Ctx() ctx: Context) {
+    async handleLink(ctx: Context) {
         await ctx.reply('https://t.me/ChristiEnglish');
     }
 } 
