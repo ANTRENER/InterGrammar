@@ -25,8 +25,8 @@ bot.action('start_test', async (ctx) => {
     }
 });
 
-// Обработка ответов на вопросы
-bot.action(/^answer_(\d+)$/, async (ctx) => {
+// Обработка ответов на вопросы (теперь с номером вопроса)
+bot.action(/^answer_(\d+)_(\d+)$/, async (ctx) => {
     try {
         await ctx.answerCbQuery();
         // Устанавливаем match для совместимости
@@ -34,6 +34,19 @@ bot.action(/^answer_(\d+)$/, async (ctx) => {
         await botUpdate.handleAnswer(ctx);
     } catch (error) {
         console.error('Error in handleAnswer:', error);
+        await ctx.answerCbQuery('Произошла ошибка');
+    }
+});
+
+// Обработка кнопки "Назад"
+bot.action(/^back_(\d+)$/, async (ctx) => {
+    try {
+        await ctx.answerCbQuery();
+        // Устанавливаем match для совместимости
+        (ctx as any).match = ctx.match;
+        await botUpdate.handleBack(ctx);
+    } catch (error) {
+        console.error('Error in handleBack:', error);
         await ctx.answerCbQuery('Произошла ошибка');
     }
 });

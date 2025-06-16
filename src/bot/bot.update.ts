@@ -8,6 +8,13 @@ interface Question {
     explanations: string[];
 }
 
+interface UserState {
+    currentQuestion: number;
+    score: number;
+    answers: number[]; // Массив ответов пользователя
+    messageIds: number[]; // ID сообщений с вопросами для удаления кнопок
+}
+
 const questions: Question[] = [
     {
         question: 'Чем ты занимаешься (по жизни)?',
@@ -292,7 +299,7 @@ const questions: Question[] = [
 ];
 
 export class BotUpdate {
-    private userStates: Map<number, { currentQuestion: number; score: number }> = new Map();
+    private userStates: Map<number, UserState> = new Map();
 
     async startCommand(ctx: Context) {
         try {
@@ -319,7 +326,12 @@ export class BotUpdate {
             }
 
             console.log('Starting test for user:', userId);
-            this.userStates.set(userId, { currentQuestion: 0, score: 0 });
+            this.userStates.set(userId, {
+                currentQuestion: 0,
+                score: 0,
+                answers: [],
+                messageIds: []
+            });
             await this.sendQuestion(ctx, 0);
         } catch (error) {
             console.error('Error in startTest:', error);
@@ -335,13 +347,28 @@ export class BotUpdate {
 
             const question = questions[questionIndex];
             const buttons = question.options.map((option, index) =>
-                [Markup.button.callback(option, `answer_${index}`)]
+                [Markup.button.callback(option, `answer_${questionIndex}_${index}`)]
             );
 
-            await ctx.reply(
+            // Добавляем кнопку "Назад" если это не первый вопрос
+            if (questionIndex > 0) {
+                buttons.push([Markup.button.callback('⬅️ Назад', `back_${questionIndex}`)]);
+            }
+
+            const message = await ctx.reply(
                 `${questionIndex + 1}) ${question.question}`,
                 Markup.inlineKeyboard(buttons)
             );
+
+            // Сохраняем ID сообщения для возможного удаления кнопок
+            const userId = ctx.from?.id;
+            if (userId) {
+                const userState = this.userStates.get(userId);
+                if (userState) {
+                    userState.messageIds[questionIndex] = message.message_id;
+                    this.userStates.set(userId, userState);
+                }
+            }
         } catch (error) {
             console.error('Error in sendQuestion:', error);
             throw error;
@@ -363,18 +390,38 @@ export class BotUpdate {
             }
 
             const match = (ctx as any).match;
-            if (!match || !match[1]) {
+            if (!match || !match[1] || !match[2]) {
                 throw new Error('Match not found in context');
             }
 
-            const selectedAnswer = parseInt(match[1]);
-            const currentQuestion = questions[userState.currentQuestion];
+            const questionIndex = parseInt(match[1]);
+            const selectedAnswer = parseInt(match[2]);
 
+            // Проверяем, что это текущий вопрос
+            if (questionIndex !== userState.currentQuestion) {
+                await ctx.answerCbQuery('Этот вопрос уже пройден или недоступен');
+                return;
+            }
+
+            const currentQuestion = questions[userState.currentQuestion];
             if (!currentQuestion) {
                 throw new Error('Current question not found');
             }
 
             console.log(`User ${userId} answered question ${userState.currentQuestion} with answer ${selectedAnswer}`);
+
+            // Сохраняем ответ
+            userState.answers[userState.currentQuestion] = selectedAnswer;
+
+            // Удаляем кнопки с предыдущего вопроса
+            try {
+                const messageId = userState.messageIds[userState.currentQuestion];
+                if (messageId) {
+                    await ctx.editMessageReplyMarkup(undefined);
+                }
+            } catch (editError) {
+                console.log('Could not edit message markup:', editError);
+            }
 
             // Показываем explanation для выбранного варианта
             await ctx.reply(currentQuestion.explanations[selectedAnswer]);
@@ -398,6 +445,66 @@ export class BotUpdate {
         } catch (error) {
             console.error('Error in handleAnswer:', error);
             throw error;
+        }
+    }
+
+    async handleBack(ctx: Context) {
+        try {
+            const userId = ctx.from?.id;
+            if (!userId) {
+                throw new Error('User ID not found');
+            }
+
+            const userState = this.userStates.get(userId);
+            if (!userState) {
+                await ctx.answerCbQuery('Пожалуйста, начните тест заново');
+                return;
+            }
+
+            const match = (ctx as any).match;
+            if (!match || !match[1]) {
+                throw new Error('Match not found in context');
+            }
+
+            const currentQuestionIndex = parseInt(match[1]);
+
+            // Проверяем, что можно вернуться назад
+            if (currentQuestionIndex <= 0) {
+                await ctx.answerCbQuery('Это первый вопрос');
+                return;
+            }
+
+            // Возвращаемся к предыдущему вопросу
+            const previousQuestionIndex = currentQuestionIndex - 1;
+            userState.currentQuestion = previousQuestionIndex;
+
+            // Удаляем ответ на предыдущий вопрос если он был
+            if (userState.answers[previousQuestionIndex] !== undefined) {
+                // Корректируем счет если ответ был правильным
+                if (userState.answers[previousQuestionIndex] === questions[previousQuestionIndex].correctAnswer) {
+                    userState.score--;
+                }
+                delete userState.answers[previousQuestionIndex];
+            }
+
+            // Удаляем кнопки с текущего сообщения
+            try {
+                const messageId = userState.messageIds[currentQuestionIndex];
+                if (messageId) {
+                    await ctx.editMessageReplyMarkup(undefined);
+                }
+            } catch (editError) {
+                console.log('Could not edit message markup:', editError);
+            }
+
+            this.userStates.set(userId, userState);
+
+            await ctx.answerCbQuery('Возвращаемся к предыдущему вопросу');
+            await this.sendQuestion(ctx, previousQuestionIndex);
+
+        } catch (error) {
+            console.error('Error in handleBack:', error);
+            await ctx.answerCbQuery('Произошла ошибка');
         }
     }
 
