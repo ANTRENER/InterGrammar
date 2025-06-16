@@ -295,91 +295,152 @@ export class BotUpdate {
     private userStates: Map<number, { currentQuestion: number; score: number }> = new Map();
 
     async startCommand(ctx: Context) {
-        await ctx.reply(
-            'Проверь себя на 20 грамматических ошибок, типичных для уровней A2, B1 и B2!\n\n' +
-            'Что умеет этот бот?\n' +
-            'Нажми кнопку начать, чтобы пройти диагностику своей грамматики и получить рекомендации по ее улучшению!',
-            Markup.inlineKeyboard([
-                Markup.button.callback('Начать тест', 'start_test')
-            ])
-        );
+        try {
+            console.log('Start command called for user:', ctx.from?.id);
+            await ctx.reply(
+                'Проверь себя на 20 грамматических ошибок, типичных для уровней A2, B1 и B2!\n\n' +
+                'Что умеет этот бот?\n' +
+                'Нажмите кнопку начать, чтобы пройти диагностику своей грамматики и получить рекомендации по ее улучшению!',
+                Markup.inlineKeyboard([
+                    Markup.button.callback('Начать тест', 'start_test')
+                ])
+            );
+        } catch (error) {
+            console.error('Error in startCommand:', error);
+            throw error;
+        }
     }
 
     async startTest(ctx: Context) {
-        const userId = ctx.from.id;
-        this.userStates.set(userId, { currentQuestion: 0, score: 0 });
-        await this.sendQuestion(ctx, 0);
+        try {
+            const userId = ctx.from?.id;
+            if (!userId) {
+                throw new Error('User ID not found');
+            }
+
+            console.log('Starting test for user:', userId);
+            this.userStates.set(userId, { currentQuestion: 0, score: 0 });
+            await this.sendQuestion(ctx, 0);
+        } catch (error) {
+            console.error('Error in startTest:', error);
+            throw error;
+        }
     }
 
     private async sendQuestion(ctx: Context, questionIndex: number) {
-        const question = questions[questionIndex];
-        const buttons = question.options.map((option, index) =>
-            [Markup.button.callback(option, `answer_${index}`)]
-        );
+        try {
+            if (questionIndex >= questions.length) {
+                throw new Error('Question index out of bounds');
+            }
 
-        await ctx.reply(
-            `${questionIndex + 1}) ${question.question}`,
-            Markup.inlineKeyboard(buttons)
-        );
+            const question = questions[questionIndex];
+            const buttons = question.options.map((option, index) =>
+                [Markup.button.callback(option, `answer_${index}`)]
+            );
+
+            await ctx.reply(
+                `${questionIndex + 1}) ${question.question}`,
+                Markup.inlineKeyboard(buttons)
+            );
+        } catch (error) {
+            console.error('Error in sendQuestion:', error);
+            throw error;
+        }
     }
 
     async handleAnswer(ctx: Context) {
-        const userId = ctx.from.id;
-        const userState = this.userStates.get(userId);
-        if (!userState) return;
+        try {
+            const userId = ctx.from?.id;
+            if (!userId) {
+                throw new Error('User ID not found');
+            }
 
-        const selectedAnswer = parseInt((ctx as any).match[1]);
-        const currentQuestion = questions[userState.currentQuestion];
+            const userState = this.userStates.get(userId);
+            if (!userState) {
+                console.log('User state not found for user:', userId);
+                await ctx.reply('Пожалуйста, начните тест заново с команды /start');
+                return;
+            }
 
-        // Показываем explanation для выбранного варианта
-        await ctx.reply(currentQuestion.explanations[selectedAnswer]);
+            const match = (ctx as any).match;
+            if (!match || !match[1]) {
+                throw new Error('Match not found in context');
+            }
 
-        // Update score if correct
-        if (selectedAnswer === currentQuestion.correctAnswer) {
-            userState.score++;
+            const selectedAnswer = parseInt(match[1]);
+            const currentQuestion = questions[userState.currentQuestion];
+
+            if (!currentQuestion) {
+                throw new Error('Current question not found');
+            }
+
+            console.log(`User ${userId} answered question ${userState.currentQuestion} with answer ${selectedAnswer}`);
+
+            // Показываем explanation для выбранного варианта
+            await ctx.reply(currentQuestion.explanations[selectedAnswer]);
+
+            // Update score if correct
+            if (selectedAnswer === currentQuestion.correctAnswer) {
+                userState.score++;
+            }
+
+            // Move to next question or show results
+            userState.currentQuestion++;
+            if (userState.currentQuestion < questions.length) {
+                await this.sendQuestion(ctx, userState.currentQuestion);
+            } else {
+                await this.showResults(ctx, userState.score);
+                // Очищаем состояние после завершения теста
+                this.userStates.delete(userId);
+            }
+
+            this.userStates.set(userId, userState);
+        } catch (error) {
+            console.error('Error in handleAnswer:', error);
+            throw error;
         }
-
-        // Move to next question or show results
-        userState.currentQuestion++;
-        if (userState.currentQuestion < questions.length) {
-            await this.sendQuestion(ctx, userState.currentQuestion);
-        } else {
-            await this.showResults(ctx, userState.score);
-        }
-
-        this.userStates.set(userId, userState);
     }
 
     private async showResults(ctx: Context, score: number) {
-        let message = '';
-        let buttonText = '';
-        let buttonCallback = '';
+        try {
+            let message = '';
+            let buttonText = '';
+            let buttonCallback = '';
 
-        message = `Твой результат: ${score} правильных ответов из ${questions.length}.\n\n`;
+            message = `Твой результат: ${score} правильных ответов из ${questions.length}.\n\n`;
 
-        if (score <= 10) {
-            message += 'Ой, к сожалению, это распространенная ситуация даже на средних уровнях, скорее всего эти непонятки тянутся еще со школы😢. Но не волнуйся! Чтобы навсегда искоренить эти ошибки и сделать твою речь ПРАВИЛЬНОЙ и БЕГЛОЙ, я создала курс "Живая грамматика". Курс основан не на правилах и табличках, а на видео с носителями, так что аудирование тоже прокачаем!';
-            buttonText = 'Перейти в Telegram';
-            buttonCallback = 'telegram_link';
-        } else if (score <= 15) {
-            message += 'Неплохо! 👏 Ты уже хорошо разбираешься в грамматике, но ошибки все еще проскакивают - это может повлиять на коммуникацию и твой образ как профессионала. Чтобы ты мог довести свои знания до совершенства и говорить ещё увереннее, я создала курс "Живая грамматика". Курс основан не на правилах и табличках, а на видео с носителями, так что аудирование тоже прокачаем!';
-            buttonText = 'Перейти в Telegram';
-            buttonCallback = 'telegram_link';
-        } else {
-            message += 'Вау, замечательный результат! 🎉У тебя нет проблем с грамматикой уровня Intermediate, а если ты хочешь двигаться дальше - приходи на уроки в мини-группы высокого уровня! Там тебя ждет много сочной продвинутой лексики и много-много общения!';
-            buttonText = 'Записаться на собеседование';
-            buttonCallback = 'interview_link';
+            if (score <= 10) {
+                message += 'Ой, к сожалению, это распространенная ситуация даже на средних уровнях, скорее всего эти непонятки тянутся еще со школы😢. Но не волнуйся! Чтобы навсегда искоренить эти ошибки и сделать твою речь ПРАВИЛЬНОЙ и БЕГЛОЙ, я создала курс "Живая грамматика". Курс основан не на правилах и табличках, а на видео с носителями, так что аудирование тоже прокачаем!';
+                buttonText = 'Перейти в Telegram';
+                buttonCallback = 'telegram_link';
+            } else if (score <= 15) {
+                message += 'Неплохо! 👏 Ты уже хорошо разбираешься в грамматике, но ошибки все еще проскакивают - это может повлиять на коммуникацию и твой образ как профессионала. Чтобы ты мог довести свои знания до совершенства и говорить ещё увереннее, я создала курс "Живая грамматика". Курс основан не на правилах и табличках, а на видео с носителями, так что аудирование тоже прокачаем!';
+                buttonText = 'Перейти в Telegram';
+                buttonCallback = 'telegram_link';
+            } else {
+                message += 'Вау, замечательный результат! 🎉У тебя нет проблем с грамматикой уровня Intermediate, а если ты хочешь двигаться дальше - приходи на уроки в мини-группы высокого уровня! Там тебя ждет много сочной продвинутой лексики и много-много общения!';
+                buttonText = 'Записаться на собеседование';
+                buttonCallback = 'interview_link';
+            }
+
+            await ctx.reply(
+                message,
+                Markup.inlineKeyboard([
+                    Markup.button.callback(buttonText, buttonCallback)
+                ])
+            );
+        } catch (error) {
+            console.error('Error in showResults:', error);
+            throw error;
         }
-
-        await ctx.reply(
-            message,
-            Markup.inlineKeyboard([
-                Markup.button.callback(buttonText, buttonCallback)
-            ])
-        );
     }
 
     async handleLink(ctx: Context) {
-        await ctx.reply('https://t.me/ChristiEnglish');
+        try {
+            await ctx.reply('https://t.me/ChristiEnglish');
+        } catch (error) {
+            console.error('Error in handleLink:', error);
+            throw error;
+        }
     }
 } 
